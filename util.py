@@ -1,13 +1,4 @@
-#-------------------------------------------------------------------
-# Filename: util.py
-#  Purpose: Helper functions for ObsPyck
-#   Author: Tobias Megies, Lion Krischer
-#    Email: megies@geophysik.uni-muenchen.de
-#  License: GPLv2
-#
-# Copyright (C) 2010 Tobias Megies, Lion Krischer
-#---------------------------------------------------------------------
-
+# -*- coding: utf-8 -*-
 import os
 import sys
 import math
@@ -27,13 +18,15 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as QFigureCanvas
 from matplotlib.widgets import MultiCursor as MplMultiCursor
 
-from obspy.core import UTCDateTime
+from obspy.core import UTCDateTime, Trace, Stream
 from obspy.core import read
 from obspy.xseed import Parser
 try:
     from obspy.core.util import gps2DistAzimuth
 except:
     from obspy.signal import gps2DistAzimuth
+
+from baikal import BaikalFile, get_time
 
 
 mpl.rc('figure.subplot', left=0.05, right=0.98, bottom=0.10, top=0.92,
@@ -172,23 +165,12 @@ COMMANDLINE_OPTIONS = (
             'default': False,
             'help': "Switch filter button on at startup."}))
 
-PROGRAMS = {
-        'nlloc': {'filenames': {'exe': "NLLoc", 'phases': "nlloc.obs",
-                                'summary': "nlloc.hyp",
-                                'scatter': "nlloc.scat"}},
-        'hyp_2000': {'filenames': {'exe': "hyp2000",'control': "bay2000.inp",
-                                   'phases': "hyp2000.pha",
-                                   'stations': "stations.dat",
-                                   'summary': "hypo.prt"}},
-        'focmec': {'filenames': {'exe': "rfocmec", 'phases': "focmec.dat",
-                                 'stdout': "focmec.stdout",
-                                 'summary': "focmec.out"}},
-        '3dloc': {'filenames': {'exe': "3dloc_pitsa", 'out': "3dloc-out",
-                                'in': "3dloc-in"}}}
 SEISMIC_PHASES = ('P', 'S')
+
 PHASE_COLORS = {'P': "red", 'S': "blue", 'Psynth': "black", 'Ssynth': "black",
         'Mag': "green", 'PErr1': "red", 'PErr2': "red", 'SErr1': "blue",
         'SErr2': "blue"}
+
 PHASE_LINESTYLES = {'P': "-", 'S': "-", 'Psynth': "--", 'Ssynth': "--",
         'PErr1': "-", 'PErr2': "-", 'SErr1': "-", 'SErr2': "-"}
 PHASE_LINEHEIGHT_PERC = {'P': 1, 'S': 1, 'Psynth': 1, 'Ssynth': 1,
@@ -207,27 +189,28 @@ KEY_FULLNAMES = {'P': "P pick", 'Psynth': "synthetic P pick",
 WIDGET_NAMES = ("qToolButton_clearAll",
     #"qToolButton_clearOrigMag",
     #"qToolButton_clearFocMec",
-    "qToolButton_doHyp2000",
+    #"qToolButton_doHyp2000",
     #"qToolButton_do3dloc", "qToolButton_doNlloc", "qComboBox_nllocModel",
     #"qToolButton_calcMag", "qToolButton_doFocMec",
-    "qToolButton_showMap",
+    #"qToolButton_showMap",
     #"qToolButton_showFocMec", "qToolButton_nextFocMec",
-    "qToolButton_showWadati", "qToolButton_getNextEvent",
-    "qToolButton_updateEventList", "qToolButton_sendNewEvent",
-    "qToolButton_replaceEvent", "qCheckBox_publishEvent",
-    "qToolButton_deleteEvent", "qCheckBox_sysop",
-    "qLineEdit_sysopPassword", "qComboBox_eventType",
-    "qToolButton_previousStream", "qLabel_streamNumber",
-    "qComboBox_streamName", "qToolButton_nextStream",
-    "qToolButton_overview", "qComboBox_phaseType", "qToolButton_rotateLQT",
-    "qToolButton_rotateZRT", "qToolButton_filter", "qToolButton_trigger",
-    "qToolButton_arpicker", "qComboBox_filterType", "qCheckBox_zerophase",
-    "qLabel_highpass", "qDoubleSpinBox_highpass", "qLabel_lowpass",
-    "qDoubleSpinBox_lowpass", "qLabel_sta", "qDoubleSpinBox_sta",
-    "qLabel_lta", "qDoubleSpinBox_lta", "qToolButton_spectrogram",
-    "qCheckBox_spectrogramLog", "qLabel_wlen", "qDoubleSpinBox_wlen",
-    "qLabel_perlap", "qDoubleSpinBox_perlap", "qPlainTextEdit_stdout",
-    "qPlainTextEdit_stderr"
+    #"qToolButton_showWadati", "qToolButton_getNextEvent",
+    #"qToolButton_updateEventList", "qToolButton_sendNewEvent",
+    #"qToolButton_replaceEvent", "qCheckBox_publishEvent",
+    #"qToolButton_deleteEvent", "qCheckBox_sysop",
+    #"qLineEdit_sysopPassword", "qComboBox_eventType",
+    #"qToolButton_previousStream", "qLabel_streamNumber",
+    #"qComboBox_streamName", "qToolButton_nextStream",
+    "qToolButton_overview",
+    "qComboBox_phaseType",
+    #"qToolButton_rotateLQT", "qToolButton_rotateZRT", "qToolButton_filter", "qToolButton_trigger",
+    #"qToolButton_arpicker", "qComboBox_filterType", "qCheckBox_zerophase",
+    #"qLabel_highpass", "qDoubleSpinBox_highpass", "qLabel_lowpass",
+    #"qDoubleSpinBox_lowpass", "qLabel_sta", "qDoubleSpinBox_sta",
+    #"qLabel_lta", "qDoubleSpinBox_lta", "qToolButton_spectrogram",
+    #"qCheckBox_spectrogramLog", "qLabel_wlen", "qDoubleSpinBox_wlen",
+    #"qLabel_perlap", "qDoubleSpinBox_perlap",
+    "qPlainTextEdit_stdout", "qPlainTextEdit_stderr"
 )
 #Estimating the maximum/minimum in a sample-window around click
 MAG_PICKWINDOW = 10
@@ -530,136 +513,6 @@ def setup_dicts(streams, options):
         #'''
     return streams, dicts
 
-def setup_external_programs(options):
-    """
-    Sets up temdir, copies program files, fills in PROGRAMS dict, sets up
-    system calls for programs.
-    Depends on command line options, returns temporary directory.
-
-    :param options: Command line options of ObsPyck
-    :type options: options as returned by :meth:`optparse.OptionParser.parse_args`
-    :returns: String representation of temporary directory with program files.
-    """
-    if not os.path.isdir(options.pluginpath):
-        msg = "No such directory: '%s'" % options.pluginpath
-        raise IOError(msg)
-    tmp_dir = tempfile.mkdtemp()
-    # set binary names to use depending on architecture and platform...
-    env = os.environ
-    architecture = platform.architecture()[0]
-    system = platform.system()
-    global SHELL
-    if system == "Windows":
-        SHELL = True
-    else:
-        SHELL = False
-    # Setup external programs #############################################
-    for prog_basename, prog_dict in PROGRAMS.iteritems():
-        prog_srcpath = os.path.join(options.pluginpath, prog_basename)
-        prog_tmpdir = os.path.join(tmp_dir, prog_basename)
-        prog_dict['dir'] = prog_tmpdir
-        shutil.copytree(prog_srcpath, prog_tmpdir, symlinks=True)
-        prog_dict['files'] = {}
-        for key, filename in prog_dict['filenames'].iteritems():
-            prog_dict['files'][key] = os.path.join(prog_tmpdir, filename)
-        prog_dict['files']['exe'] = "__".join(\
-                [prog_dict['filenames']['exe'], system, architecture])
-        # setup clean environment
-        prog_dict['env'] = {}
-        prog_dict['env']['PATH'] = prog_dict['dir'] + os.pathsep + env['PATH']
-        if 'SystemRoot' in env:
-            prog_dict['env']['SystemRoot'] = env['SystemRoot']
-    # 3dloc ###############################################################
-    prog_dict = PROGRAMS['3dloc']
-    prog_dict['env']['D3_VELOCITY'] = \
-            os.path.join(prog_dict['dir'], 'D3_VELOCITY') + os.sep
-    prog_dict['env']['D3_VELOCITY_2'] = \
-            os.path.join(prog_dict['dir'], 'D3_VELOCITY_2') + os.sep
-    def tmp(prog_dict):
-        files = prog_dict['files']
-        for file in [files['out'], files['in']]:
-            if os.path.isfile(file):
-                os.remove(file)
-        return
-    prog_dict['PreCall'] = tmp
-    def tmp(prog_dict):
-        sub = subprocess.Popen(prog_dict['files']['exe'], shell=SHELL,
-                cwd=prog_dict['dir'], env=prog_dict['env'],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if system == "Darwin":
-            returncode = sub.returncode
-        else:
-            returncode = sub.wait()
-        msg = "".join(sub.stdout.readlines())
-        err = "".join(sub.stderr.readlines())
-        return (msg, err, returncode)
-    prog_dict['Call'] = tmp
-    # Hyp2000 #############################################################
-    prog_dict = PROGRAMS['hyp_2000']
-    prog_dict['env']['HYP2000_DATA'] = prog_dict['dir'] + os.sep
-    def tmp(prog_dict):
-        files = prog_dict['files']
-        for file in [files['phases'], files['stations'], files['summary']]:
-            if os.path.isfile(file):
-                os.remove(file)
-        return
-    prog_dict['PreCall'] = tmp
-    def tmp(prog_dict):
-        sub = subprocess.Popen(prog_dict['files']['exe'], shell=SHELL,
-                cwd=prog_dict['dir'], env=prog_dict['env'],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        input = open(prog_dict['files']['control'], "rt").read()
-        (msg, err) = sub.communicate(input)
-        if system == "Darwin":
-            returncode = sub.returncode
-        else:
-            returncode = sub.wait()
-        return (msg, err, returncode)
-    prog_dict['Call'] = tmp
-    # NLLoc ###############################################################
-    prog_dict = PROGRAMS['nlloc']
-    def tmp(prog_dict):
-        filepattern = os.path.join(prog_dict['dir'], "nlloc*")
-        print filepattern
-        for file in glob.glob(filepattern):
-            os.remove(file)
-        return
-    prog_dict['PreCall'] = tmp
-    def tmp(prog_dict, controlfilename):
-        sub = subprocess.Popen([prog_dict['files']['exe'], controlfilename],
-                cwd=prog_dict['dir'], env=prog_dict['env'], shell=SHELL,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if system == "Darwin":
-            returncode = sub.returncode
-        else:
-            returncode = sub.wait()
-        msg = "".join(sub.stdout.readlines())
-        err = "".join(sub.stderr.readlines())
-        for pattern, key in [("nlloc.*.*.*.loc.scat", 'scatter'),
-                             ("nlloc.*.*.*.loc.hyp", 'summary')]:
-            pattern = os.path.join(prog_dict['dir'], pattern)
-            newname = os.path.join(prog_dict['dir'], prog_dict['files'][key])
-            for file in glob.glob(pattern):
-                os.rename(file, newname)
-        return (msg, err, returncode)
-    prog_dict['Call'] = tmp
-    # focmec ##############################################################
-    prog_dict = PROGRAMS['focmec']
-    def tmp(prog_dict):
-        sub = subprocess.Popen(prog_dict['files']['exe'], shell=SHELL,
-                cwd=prog_dict['dir'], env=prog_dict['env'],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if system == "Darwin":
-            returncode = sub.returncode
-        else:
-            returncode = sub.wait()
-        msg = "".join(sub.stdout.readlines())
-        err = "".join(sub.stderr.readlines())
-        return (msg, err, returncode)
-    prog_dict['Call'] = tmp
-    #######################################################################
-    return tmp_dir
 
 #Monkey patch (need to remember the ids of the mpl_connect-statements to remove them later)
 #See source: http://matplotlib.sourcearchive.com/documentation/0.98.1/widgets_8py-source.html
@@ -702,22 +555,6 @@ def gk2lonlat(x, y, m_to_km=True):
     lon, lat = pyproj.transform(proj_gk4, proj_wgs84, x, y)
     return (lon, lat)
 
-def readNLLocScatter(scat_filename, textviewStdErrImproved):
-    """
-    This function reads location and values of pdf scatter samples from the
-    specified NLLoc *.scat binary file (type "<f4", 4 header values, then 4
-    floats per sample: x, y, z, pdf value) and converts X/Y Gauss-Krueger
-    coordinates (zone 4, central meridian 12 deg) to Longitude/Latitude in
-    WGS84 reference ellipsoid.
-    We do this using the Linux command line tool cs2cs.
-    Messages on stderr are written to specified GUI textview.
-    Returns an array of xy pairs.
-    """
-    # read data, omit the first 4 values (header information) and reshape
-    data = np.fromfile(scat_filename, dtype="<f4").astype("float")[4:]
-    data = data.reshape((len(data)/4, 4)).swapaxes(0, 1)
-    lon, lat = gk2lonlat(data[0], data[1])
-    return np.vstack((lon, lat, data[2]))
 
 def errorEllipsoid2CartesianErrors(azimuth1, dip1, len1, azimuth2, dip2, len2,
                                    len3):
@@ -768,43 +605,6 @@ def formatXTicklabels(x, *pos):
     else:
         return "%.3f" % x
 
-def map_qKeys(key_dict):
-    """
-    Map Dictionary of form {'functionality': "Qt_Key_name"} to
-    {'functionality': Qt_Key_Code} for use in check against event Keys.
-
-    >>> KEYS = {'delMagMinMax': 'Key_Escape',
-    ...         'delPick': 'Key_Escape',
-    ...         'nextStream': 'Key_X',
-    ...         'prevStream': 'Key_Y',
-    ...         'setPol': {'Key_D': 'down',
-    ...                    'Key_Minus': 'poordown',
-    ...                    'Key_Plus': 'poorup',
-    ...                    'Key_U': 'up'},
-    ...         'setWeight': {'Key_0': 0, 'Key_1': 1, 'Key_2': 2, 'Key_3': 3},
-    ...         'switchWheelZoomAxis': 'Key_Shift'}
-    >>> map_qKeys(KEYS)
-    {'delMagMinMax': 16777216,
-     'delPick': 16777216,
-     'nextStream': 88,
-     'prevStream': 89,
-     'setPol': {43: 'poorup', 45: 'poordown', 68: 'down', 85: 'up'},
-     'setWeight': {48: 0, 49: 1, 50: 2, 51: 3},
-     'switchWheelZoomAxis': 16777248}
-    """
-    Qt = PyQt4.QtCore.Qt
-    for functionality, key_name in key_dict.iteritems():
-        if isinstance(key_name, str):
-            key_dict[functionality] = getattr(Qt, key_name)
-        # sometimes we get a nested dictionary (e.g. "setWeight")...
-        elif isinstance(key_name, dict):
-            nested_dict = key_name
-            new = {}
-            for key_name, value in nested_dict.iteritems():
-                new[getattr(Qt, key_name)] = value
-            key_dict[functionality] = new
-    return key_dict
-
 def coords2azbazinc(stream, origin):
     """
     Returns azimuth, backazimuth and incidence angle from station coordinates
@@ -839,3 +639,139 @@ class SplitWriter():
                 obj.appendPlainText(msg)
             else:
                 obj.write(msg)
+
+#====================
+
+DB_OPTIONS = {
+    'host': '172.16.200.1',
+    'database': 'seisobr',
+    'user': 'pguser',
+    'password': 'my_password',
+}
+
+SETTINGS = {
+    "width": 800, #1360,
+    "height": 400,#700
+}
+
+DATA_DIR = "seisobr" # папка где хранятся сейсмограммы
+
+
+#'SELECT "idPrn", "seisFile" FROM "seisobr_prns" WHERE "idDir" = %s'
+SELECT_CODES = """\
+SELECT "prnbase01_prns"."idPrn", "prnbase01_prnsdir"."Path", "prnbase01_prns"."seisFile"
+FROM "prnbase01_prns"
+INNER JOIN "prnbase01_prnsdir"
+ON "prnbase01_prnsdir"."idDir" = "prnbase01_prns"."idDir"
+WHERE "prnbase01_prns"."idDir" = %s
+ORDER BY 1;\
+"""
+
+SELECT_WAVES = """\
+SELECT "prnbase01_prnswaves"."NameWave", "prnbase01_prnswaves"."TimeWave",
+    "prnbase01_prnswaves"."idWave"
+FROM "prnbase01_prnswaves"
+INNER JOIN "prnbase01_prns"
+ON "prnbase01_prns"."idPrn" = "prnbase01_prnswaves"."idPrn"
+WHERE "prnbase01_prnswaves"."idPrn" = %s
+AND "prnbase01_prnswaves"."NameWave" NOT LIKE '__m'
+;\
+"""
+#--AND "seisobr_prnswaves"."NameWave" NOT LIKE '%m'
+#--where letter "m" is not in NameWave
+
+UPDATE_WAVES = 'UPDATE "prnbase01_prnswaves" SET "TimeWave"=%s WHERE "idWave"=%s;'
+
+CANALS = ("NS", "EW", "Z", "NSg", "EWg", "Zg")
+
+
+
+def execute_query(QUERY, params):
+    """ ищем записи """
+    try:
+        cursor.execute(QUERY, tuple(params,))
+    except psycopg2.Error, msg:
+        print("An error ocured while executing query:", msg)
+        #return []
+    else:
+        return cursor.fetchall()
+
+
+def secfromtime(time):
+    """ вернуть число в секундах (и милисек) из времени """
+    #tim.hour * 3600 + tim.minute * 60 + tim.second
+    # если параметр - строка
+    if isinstance(time, str):
+        t = time.split(':')
+        return int(t[0]) * 3600 + int(t[1]) * 60 + float(t[2])
+    else:
+        raise NotImplementedError
+
+
+def read_baikal(filename):
+    """ читаем заголовок и область данных в файле формата Байкал """
+    #try:
+    if not os.path.exists(filename):
+        print("File not found: %s" % filename)
+        return
+    # work on file
+    with open(filename, "rb") as _f:
+        nkan = struct.unpack("h", _f.read(2))[0]
+        # проверка на количество каналов
+        if not (nkan in range(1,7)): return
+        # разрядность
+        _f.seek(18)
+        razr = struct.unpack("h", _f.read(2))[0]
+        # дискретизация
+        _f.seek(48)
+        sampl_rate = struct.unpack("d", _f.read(8))[0]
+        # считать значение первой секунды
+        t0 = struct.unpack("d", _f.read(8))[0]
+        # где начинаются данные
+        offset = 120 + nkan * 72
+        _f.seek(offset)
+        # считываются массивы с данными
+        a = np.fromstring(_f.read(), dtype=np.int16 if razr==16 else np.int32)
+        # обрезать массив с конца пока он не делится на 3
+        while len(a) % 3 != 0: a = a[:-1]
+        # демультиплексируем
+        data = a.reshape((len(a)/nkan, nkan)).T
+        #a.fromstring(data)
+        # вернуть + массив с demultuplex данными и количество каналов
+    return sampl_rate, t0, data, nkan
+
+
+def get_traces_from_baikal_file(filename):
+    # загружать данные из файла формата Байкал
+    bf = BaikalFile(filename)
+    if not bf.valid:
+        print("\nSkipping file %s" % filename)
+        return
+    # time
+    _hour, _minute, _seconds = get_time(bf.main_header.to, unpack=True)
+    # and UTCDateTime
+    utcdatetime = UTCDateTime(
+        bf.main_header.year,
+        bf.main_header.month,
+        bf.main_header.day,
+        int(_hour), int(_minute), _seconds,
+        # digits after point
+        precision=3
+    )
+    # все каналы (трассы) из файла
+    traces = []
+    for i, channel in enumerate(bf.channels):
+        # repair name of channel
+        ch_name = channel.name_chan[0].upper()
+        # создадим заголовок
+        header = {
+            'network': 'BR',
+            'station': bf.main_header.station.upper(),
+            'location': '',
+            'channel': ch_name,
+            'npts': len(bf.data[i]),
+            'sampling_rate': 1. / bf.main_header.dt,
+            'starttime': utcdatetime,
+        }
+        traces += [Trace(header=header, data=bf.data[i])]
+    return traces

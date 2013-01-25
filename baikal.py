@@ -6,6 +6,7 @@
 import struct
 import numpy as np
 import datetime
+import math
 
 
 def stripnulls(s):

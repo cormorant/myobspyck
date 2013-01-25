@@ -64,261 +64,6 @@
          <property name="handleWidth">
           <number>8</number>
          </property>
-         <widget class="QWidget" name="layoutWidgetxx">
-          <layout class="QVBoxLayout" name="leftVerticalLayout">
-           <property name="spacing">
-            <number>1</number>
-           </property>
-           <property name="sizeConstraint">
-            <enum>QLayout::SetDefaultConstraint</enum>
-           </property>
-           <property name="margin">
-            <number>1</number>
-           </property>
-           <item>
-            <widget class="QToolButton" name="qToolButton_clearAll">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="font">
-              <font>
-               <kerning>true</kerning>
-              </font>
-             </property>
-             <property name="focusPolicy">
-              <enum>Qt::NoFocus</enum>
-             </property>
-             <property name="styleSheet">
-              <string notr="true"/>
-             </property>
-             <property name="text">
-              <string>очистить</string>
-             </property>
-             <property name="checkable">
-              <bool>false</bool>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <spacer name="verticalSpacer_2">
-             <property name="orientation">
-              <enum>Qt::Vertical</enum>
-             </property>
-             <property name="sizeHint" stdset="0">
-              <size>
-               <width>20</width>
-               <height>40</height>
-              </size>
-             </property>
-            </spacer>
-           </item>
-           <item>
-            <widget class="QLabel" name="label">
-             <property name="text">
-              <string>Search by date/time:</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="KDateTimeWidget" name="kdatetimewidget"/>
-           </item>
-           <item>
-            <widget class="QToolButton" name="qToolButton_doHyp2000">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="focusPolicy">
-              <enum>Qt::NoFocus</enum>
-             </property>
-             <property name="text">
-              <string>OK</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <layout class="QHBoxLayout" name="horizontalLayout_3">
-             <property name="sizeConstraint">
-              <enum>QLayout::SetMinimumSize</enum>
-             </property>
-            </layout>
-           </item>
-           <item>
-            <spacer name="verticalSpacer_3">
-             <property name="orientation">
-              <enum>Qt::Vertical</enum>
-             </property>
-             <property name="sizeHint" stdset="0">
-              <size>
-               <width>20</width>
-               <height>40</height>
-              </size>
-             </property>
-            </spacer>
-           </item>
-           <item>
-            <widget class="QLabel" name="label_2">
-             <property name="text">
-              <string>Search by idDir:</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QComboBox" name="comboBox"/>
-           </item>
-           <item>
-            <widget class="QSpinBox" name="lineEdit">
-             <property name="maximum">
-              <number>50000</number>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QToolButton" name="qToolButton_showMap">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="focusPolicy">
-              <enum>Qt::NoFocus</enum>
-             </property>
-             <property name="text">
-              <string>OK</string>
-             </property>
-             <property name="checkable">
-              <bool>false</bool>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <spacer name="verticalSpacer_4">
-             <property name="orientation">
-              <enum>Qt::Vertical</enum>
-             </property>
-             <property name="sizeHint" stdset="0">
-              <size>
-               <width>20</width>
-               <height>40</height>
-              </size>
-             </property>
-            </spacer>
-           </item>
-           <item>
-            <widget class="QToolButton" name="qToolButton_getNextEvent">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="focusPolicy">
-              <enum>Qt::NoFocus</enum>
-             </property>
-             <property name="text">
-              <string>След.</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QToolButton" name="qToolButton_updateEventList">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="focusPolicy">
-              <enum>Qt::NoFocus</enum>
-             </property>
-             <property name="text">
-              <string>обновить список</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QToolButton" name="qToolButton_replaceEvent">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="focusPolicy">
-              <enum>Qt::NoFocus</enum>
-             </property>
-             <property name="text">
-              <string>заменить</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QToolButton" name="qToolButton_deleteEvent">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="focusPolicy">
-              <enum>Qt::NoFocus</enum>
-             </property>
-             <property name="text">
-              <string>удалить</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <layout class="QHBoxLayout" name="horizontalLayout_4">
-             <property name="sizeConstraint">
-              <enum>QLayout::SetMinimumSize</enum>
-             </property>
-            </layout>
-           </item>
-           <item>
-            <spacer name="verticalSpacer_5">
-             <property name="orientation">
-              <enum>Qt::Vertical</enum>
-             </property>
-             <property name="sizeHint" stdset="0">
-              <size>
-               <width>20</width>
-               <height>40</height>
-              </size>
-             </property>
-            </spacer>
-           </item>
-           <item>
-            <layout class="QHBoxLayout" name="horizontalLayout_5">
-             <property name="sizeConstraint">
-              <enum>QLayout::SetMinimumSize</enum>
-             </property>
-             <item>
-              <widget class="QToolButton" name="qToolButton_debug">
-               <property name="sizePolicy">
-                <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
-                 <horstretch>0</horstretch>
-                 <verstretch>0</verstretch>
-                </sizepolicy>
-               </property>
-               <property name="focusPolicy">
-                <enum>Qt::NoFocus</enum>
-               </property>
-               <property name="text">
-                <string>debug</string>
-               </property>
-              </widget>
-             </item>
-            </layout>
-           </item>
-          </layout>
-         </widget>
          <widget class="QWidget" name="qWidget_mpl">
           <layout class="QVBoxLayout" name="qVBoxLayout_mpl">
            <item>
@@ -492,10 +237,55 @@ p, l  i { white-space: pre-wrap; }
              <item>
               <layout class="QVBoxLayout" name="verticalLayout_7">
                <item>
-                <layout class="QHBoxLayout" name="horizontalLayout_18"/>
+                <layout class="QHBoxLayout" name="horizontalLayout_18">
+                 <item>
+                  <widget class="QToolButton" name="qToolButton_clearAll">
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
+                     <horstretch>0</horstretch>
+                     <verstretch>0</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="font">
+                    <font>
+                     <kerning>true</kerning>
+                    </font>
+                   </property>
+                   <property name="focusPolicy">
+                    <enum>Qt::NoFocus</enum>
+                   </property>
+                   <property name="styleSheet">
+                    <string notr="true"/>
+                   </property>
+                   <property name="text">
+                    <string>очистить</string>
+                   </property>
+                   <property name="checkable">
+                    <bool>false</bool>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
                </item>
                <item>
-                <layout class="QHBoxLayout" name="horizontalLayout_19"/>
+                <layout class="QHBoxLayout" name="horizontalLayout_19">
+                 <item>
+                  <widget class="QToolButton" name="qToolButton_debug">
+                   <property name="sizePolicy">
+                    <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+                     <horstretch>0</horstretch>
+                     <verstretch>0</verstretch>
+                    </sizepolicy>
+                   </property>
+                   <property name="focusPolicy">
+                    <enum>Qt::NoFocus</enum>
+                   </property>
+                   <property name="text">
+                    <string>debug</string>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
                </item>
               </layout>
              </item>
@@ -506,8 +296,8 @@ p, l  i { white-space: pre-wrap; }
                </property>
                <property name="sizeHint" stdset="0">
                 <size>
-                 <width>2</width>
-                 <height>10</height>
+                 <width>40</width>
+                 <height>20</height>
                 </size>
                </property>
               </spacer>
@@ -789,11 +579,6 @@ p, l  i { white-space: pre-wrap; }
   </action>
  </widget>
  <customwidgets>
-  <customwidget>
-   <class>KDateTimeWidget</class>
-   <extends>QWidget</extends>
-   <header>kdatetimewidget.h</header>
-  </customwidget>
   <customwidget>
    <class>QMplCanvas</class>
    <extends>QWidget</extends>
