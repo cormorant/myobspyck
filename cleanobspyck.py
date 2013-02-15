@@ -8,7 +8,7 @@ APP_NAME = 'cleanpyck'
 
 import os
 import sys
-import optparse
+import argparse
 
 from PyQt4 import QtGui, QtCore
 from PyQt4.QtCore import QEvent, Qt
@@ -26,27 +26,24 @@ from matplotlib.backend_bases import MouseEvent as MplMouseEvent, KeyEvent as Mp
 from obspy.core import UTCDateTime, Stream, Trace
 
 from qt_design_short import Ui_qMainWindow_obsPyck
-from util import *
 
-from util import get_traces_from_baikal_file
+from addon import *
 
 
 class ObsPyck(QtGui.QMainWindow):
     """
     Main Window with the design loaded from the Qt Designer.
     """
-    def __init__(self, clients, streams, options, keys):
+    def __init__(self, T0, T1, dicts, streams, options, keys):
         """
         Standard init.
         """
-        self.load_data(clients, streams, options, keys)
+        self.load_data(dicts, streams, options, keys)
         # T0 is the global reference time (zero in relative time scales)
-        #self.T0 = UTCDateTime(options.time)
-        #self.T0 += options.starttime_offset
-        #DIRTY HACK: set T0 to min of 1st trace
-        self.T0 = self.streams[0].traces[0].stats.starttime - 1
-        # T1 is the end time specified by user
-        self.T1 = self.T0 + options.duration
+        self.T0 = T0
+        self.T0 += options.starttime_offset
+        # T1 is the max end time
+        self.T1 = T1 + 10
         print "T0 =", self.T0, "T1 =", self.T1
         # init the GUI stuff
         QtGui.QMainWindow.__init__(self)
@@ -58,12 +55,11 @@ class ObsPyck(QtGui.QMainWindow):
         # Needs to be done pretty much at the beginning because some other
         # stuff relies on the phase type being set.
         pixmap = QtGui.QPixmap(70, 50)
-        for phase_type in list(SEISMIC_PHASES):# + ['Mag']:
+        for phase_type in list(SEISMIC_PHASES):
             rgb = matplotlib_color_to_rgb(PHASE_COLORS[phase_type])
             pixmap.fill(QtGui.QColor(*rgb))
             icon = QtGui.QIcon(pixmap)
             self.widgets.qComboBox_phaseType.addItem(icon, phase_type)
-
         self.qMain = self.widgets.centralwidget
         # Add write methods to stdout/stderr text edits in GUI displays to
         # enable redirections for stdout and stderr.
@@ -91,45 +87,50 @@ class ObsPyck(QtGui.QMainWindow):
         # because the matplotlib events seem to have a problem with Debian.
         self.widgets.qMplCanvas.wheelEvent = self.__mpl_wheelEvent
         #self.keyPressEvent = self.__mpl_keyPressEvent
-
         self.fig = self.widgets.qMplCanvas.fig
         facecolor = self.qMain.palette().color(QtGui.QPalette.Window).getRgb()
         self.fig.set_facecolor([value / 255.0 for value in facecolor])
-
         #Define some flags, dictionaries and plotting options
         #this next flag indicates if we zoom on time or amplitude axis
         self.flagWheelZoomAmplitude = False
-        check_keybinding_conflicts(KEYS)
-        #
-        self.spectrogramColormap = matplotlib.cm.jet
-        #
-        (warn_msg, merge_msg, streams) =("", "", streams)
-        #        merge_check_and_cleanup_streams(streams, options)
+        #check_keybinding_conflicts(KEYS)
+        warn_msg, merge_msg = "", ""
         # exit if no streams are left after removing everything not suited.
         if not streams:
             raise Exception("No streams left to work with after removing bad streams.")
-
         # set up dictionaries to store phase_type/axes/line informations
         self.lines = {}
         self.texts = {}
-
         # sort streams by station name
         streams.sort(key=lambda st: st[0].stats['station'])
-        (streams, dicts) = setup_dicts(streams, options)
-        dicts = [{'P': 73.770000000000067, 'S': 87.900000000000077, 'Station': 'HRM', 'MagUse': True, 'Saxind': 0}, {'P': 39.12000000000003, 'S': 48.23000000000004, 'Station': 'OGRR', 'MagUse': True, 'Saxind': 1}, {'P': 60.160000000000053, 'S': 72.620000000000061, 'Station': 'TRG', 'MagUse': True, 'Saxind': 0}]
-        self.dicts = dicts
+        # получить (если возможно) исходные времена вступлений для этих файлов
+        #(streams, dicts) = setup_dicts(streams, options)
+        #
+        '''dicts = [{'MagUse': True,
+          'P': 73.77000000000007,
+          'S': 87.90000000000008,
+          'Saxind': 0,
+          'Station': 'HRM'},
+         {'MagUse': True,
+          'P': 39.12000000000003,
+          'S': 48.23000000000004,
+          'Saxind': 1,
+          'Station': 'OGRR'},
+         {'MagUse': True,
+          'P': 60.16000000000005,
+          'S': 72.62000000000006,
+          'Saxind': 0,
+          'Station': 'TRG'}]'''
         self.eventMapColors = []
         for i in xrange(len(dicts)):
             self.eventMapColors.append((0.,  1.,  0.,  1.))
-
         #Define a pointer to navigate through the streams
         self.stNum = len(streams)
         self.stPt = 0
-        
+        #
         self.drawAxes()
         self.multicursor = MultiCursor(self.canv, self.axs, useblit=True,
-                                       color='k', linewidth=1, ls='dotted')
-
+            color='k', linewidth=1, ls='dotted')
         # Initialize the stream related widgets with the right values:
         self.widgets.qComboBox_streamName.clear()
         labels = ["%s.%s" % (st[0].stats.network, st[0].stats.station) \
@@ -138,9 +139,7 @@ class ObsPyck(QtGui.QMainWindow):
         # set the filter/trigger default values according to command line
         # options or optionparser default values
         self.updateStreamLabels()
-
         print >> sys.stderr, warn_msg
-
         # XXX mpl connect XXX XXX XXX XXX XXX
         # XXX http://eli.thegreenplace.net/files/prog_code/qt_mpl_bars.py.txt
         # XXX http://eli.thegreenplace.net/2009/01/20/matplotlib-with-pyqt-guis/
@@ -162,8 +161,6 @@ class ObsPyck(QtGui.QMainWindow):
         # XXX XXX the good old focus issue again!?! no events get to the mpl canvas
         # XXX self.canv.setFocusPolicy(Qt.WheelFocus)
         #print self.canv.hasFocus()
-        #
-        #
         self.settings = QtCore.QSettings(COMPANY_NAME, APP_NAME)
         #self.setWindowTitle('pyck (v. %s)' % __version__)
         size = self.settings.value("MainWindow/Size", QVariant(QSize(800, 600))).toSize()
@@ -173,9 +170,9 @@ class ObsPyck(QtGui.QMainWindow):
         self.connect(self.widgets.exit_action, QtCore.SIGNAL("triggered()"), self.close)
         self.connect(self.widgets.open_action, QtCore.SIGNAL("triggered()"), self.open_file)
     
-    def load_data(self, clients, streams, options, keys, redraw=False):
+    def load_data(self, dicts, streams, options, keys, redraw=False):
         """ загрузить новые данные """
-        self.clients = clients
+        self.dicts = dicts
         self.streams = streams
         self.options = options
         self.keys = keys
@@ -189,8 +186,6 @@ class ObsPyck(QtGui.QMainWindow):
         self.texts = {}
         # sort streams by station name
         streams.sort(key=lambda st: st[0].stats['station'])
-        (streams, dicts) = setup_dicts(streams, options)
-        self.dicts = dicts
         self.eventMapColors = []
         for i in xrange(len(dicts)):
             self.eventMapColors.append((0.,  1.,  0.,  1.))
@@ -213,7 +208,7 @@ class ObsPyck(QtGui.QMainWindow):
             '/home/Work/seis')
         print filename
         stream = read(str(filename))
-        self.load_data(self.clients, [stream], self.options, self.keys, redraw=True)
+        self.load_data(self.dicts, [stream], self.options, self.keys, redraw=True)
 
     def time_abs2rel(self, abstime):
         """
@@ -331,18 +326,6 @@ class ObsPyck(QtGui.QMainWindow):
         self._arpicker()
         self.updateAllItems()
         self.redraw()
-
-
-    def closeEvent(self, event):
-        #print type(event)#PyQt4.QtGui.QCloseEvent
-        reply = QtGui.QMessageBox.question(self, u'Сообщение',
-            u"Действительно выйти?", QtGui.QMessageBox.Yes, QtGui.QMessageBox.No)
-        if reply == QtGui.QMessageBox.Yes:
-            # сохраним настройки
-            self.settings.setValue("MainWindow/Size", QVariant(self.size()))
-            event.accept()
-        else:
-            event.ignore()
 
 
     def debug(self):
@@ -599,10 +582,7 @@ class ObsPyck(QtGui.QMainWindow):
             ax.xaxis.set_major_formatter(FuncFormatter(formatXTicklabels))
             # normalize with overall sensitivity and convert to nm/s
             # if not explicitly deactivated on command line
-            if not self.options.nonormalization and not self.options.nometadata:
-                plts.append(ax.plot(sampletimes, tr.data / tr.stats.paz.sensitivity * 1e9, color='k', zorder=1000)[0])
-            else:
-                plts.append(ax.plot(sampletimes, tr.data, color='k', zorder=1000)[0])
+            plts.append(ax.plot(sampletimes, tr.data, color='k', zorder=1000)[0])
             textcolor = "blue"
         self.drawIds()
         axs[-1].xaxis.set_ticks_position("both")
@@ -1078,16 +1058,7 @@ class ObsPyck(QtGui.QMainWindow):
             ax.xaxis.set_major_formatter(FuncFormatter(formatXTicklabels))
             # we have to rotate first, because we have to copy the whole stream..
             tr = tr.copy()
-            # normalize with overall sensitivity and convert to nm/s
-            # if not explicitly deactivated on command line
-            if not self.options.nonormalization and not self.options.nometadata:
-                # special handling for GSE2 data: apply calibration
-                calib = 1.0
-                if tr.stats._format == "GSE2":
-                    calib = tr.stats.calib * 2 * np.pi / tr.stats.gse2.calper
-                plts.append(ax.plot(sampletimes, tr.data * 1e9 / tr.stats.paz.sensitivity / calib, color='k', zorder=1000)[0])
-            else:
-                plts.append(ax.plot(sampletimes, tr.data, color='k', zorder=1000)[0])
+            plts.append(ax.plot(sampletimes, tr.data, color='k', zorder=1000)[0])
         self.drawIds()
         axs[-1].xaxis.set_ticks_position("both")
         label = self.T0.isoformat().replace("T", "  ")
@@ -1272,21 +1243,6 @@ class ObsPyck(QtGui.QMainWindow):
         self.updateNetworkMag()
         self.canv.draw()
     
-    def dicts2hypo71Stations(self):
-        pass
-    
-    def dicts2hypo71Phases(self):
-        pass
-
-    def dicts2NLLocPhases(self):
-        pass
-
-    def setXMLEventID(self, event_id=None):
-        pass
-
-    def deleteEventInSeisHub(self, resource_name):
-        pass
-    
     def clearDictionaries(self):
         print "Clearing previous data."
         dont_delete = ['Station', 'StaLat', 'StaLon', 'StaEle',
@@ -1300,7 +1256,7 @@ class ObsPyck(QtGui.QMainWindow):
         # XXX but caution this can easily change behavior of obspyck!!
         self.dictOrigin = {}
         self.dictMagnitude = {}
-        self.clearFocmecDictionary()
+        #self.clearFocmecDictionary()
         self.dictEvent = {}
 
     def clearOriginMagnitudeDictionaries(self):
@@ -1324,12 +1280,6 @@ class ObsPyck(QtGui.QMainWindow):
         #if 'xmlEventID' in self.dictEvent:
         #    del self.dictEvent['xmlEventID']
 
-    def clearFocmecDictionary(self):
-        print "Clearing previous focal mechanism data."
-        self.dictFocalMechanism = {}
-        self.focMechList = []
-        self.focMechCurrent = None
-        self.focMechCount = None
 
     def drawAllItems(self):
         keys_line = (phase_type + suffix \
@@ -1363,113 +1313,102 @@ class ObsPyck(QtGui.QMainWindow):
         self.delAllItems()
         self.drawAllItems()
 
-    def getEventFromSeisHub(self, resource_name):
-        pass
-
-    def updateEventListFromSeisHub(self, starttime, endtime):
-        """
-        Searches for events in the database and stores a list of resource
-        names. All events with at least one pick set in between start- and
-        endtime are returned.
-
-        :param starttime: Start datetime as UTCDateTime
-        :param endtime: End datetime as UTCDateTime
-        """
-        pass
-
-    def checkForSysopEventDuplicates(self, starttime, endtime):
-        pass
-
-    def checkForCompleteEvent(self):
-        """
-        checks if the event has the necessary information a sysop event should
-        have::
-        
-          - datetime (origin time)
-          - longitude/latitude/depth
-          - magnitude
-          - used_p/used_s
-        """
-        keys_origin = ("Time", "Latitude", "Longitude", "Depth",
-                       "used P Count", "used S Count")
-        keys_magnitude = ("Magnitude",)
-        if not all([key in self.dictOrigin for key in keys_origin]):
-            return False
-        if not all([key in self.dictMagnitude for key in keys_magnitude]):
-            return False
-        return True
-
-    def popupBadEventError(self):
-        """
-        pop up an error window indicating that event information is missing
-        """
-        keys_origin = ("Time", "Latitude", "Longitude", "Depth",
-                       "used P Count", "used S Count")
-        keys_magnitude = ("Magnitude",)
-        missing = [key for key in keys_origin if key not in self.dictOrigin]
-        missing += [key for key in keys_magnitude if key not in self.dictMagnitude]
-        missing = "\n".join(missing)
-        err = "The sysop event to submit misses some mandatory information:"
-        print >> sys.stderr, err
-        print >> sys.stderr, missing
-        qMessageBox = QtGui.QMessageBox()
-        qMessageBox.setWindowIcon(QtGui.QIcon(QtGui.QPixmap("obspyck.gif")))
-        qMessageBox.setIcon(QtGui.QMessageBox.Critical)
-        qMessageBox.setWindowTitle("SysOp Event with Missing Information!")
-        qMessageBox.setText(err)
-        qMessageBox.setInformativeText(missing)
-        qMessageBox.setStandardButtons(QtGui.QMessageBox.Abort)
-        qMessageBox.exec_()
-
 
 def main():
     """ execute when the program starts """
-    usage = "\n * SeisHub:\n    " + \
-            "%prog -t 2010-08-01T12:00:00 -d 30 -i BW.R*..EH*,BW.BGLD..EH*\n" + \
-            "%prog -t 2010-08-01T12:00:00 -d 30 --seishub-ids BW.R*..EH*,BW.BGLD..EH*\n" + \
-            " * ArcLink:\n    " + \
-            "%prog -t 2010-08-01T12:00:00 -d 30 --arclink-ids GE.APE..BH*,GE.IMMV..BH*\n" + \
-            " * Fissures:\n    " + \
-            "%prog -t 2010-08-01T12:00:00 -d 30 --fissures-ids GR.GRA1..BH*,DK.BSD..BH*\n" + \
-            " * combination of clients:\n    " + \
-            "%prog -t 2010-08-01T12:00:00 -d 30 -i BW.R*..EH* --arclink-ids GE.APE..BH* --fissures-ids GR.GRA1..BH*" + \
-            "\n\nGet all available options with: %prog -h"
-    parser = optparse.OptionParser(usage)
-    for opt_args, opt_kwargs in COMMANDLINE_OPTIONS:
-        parser.add_option(*opt_args, **opt_kwargs)
-    (options, args) = parser.parse_args()
-    #print options
+    parser = argparse.ArgumentParser()
+    for arg, kwargs in COMMANDLINE_OPTIONS:
+        parser.add_argument(*arg, **kwargs)
+    options = parser.parse_args()
+    args = options.arguments
+    #print options, args
+    #return
     # For keybindings option, just print them and exit.
     if options.keybindings:
         for key, value in KEYS.iteritems():
             print "%s: \"%s\"" % (key, value)
         return
-    # check for necessary options
-    if not any([getattr(parser.values, parser.get_option(opt).dest) \
-                for opt in ("--seishub-ids", "--arclink-ids", "--fissures-ids", "-f")]) \
-       or not all([getattr(parser.values, parser.get_option(opt).dest) \
-                   for opt in ('-d', '-t')]):
-        parser.print_usage()
-        return
-    check_keybinding_conflicts(KEYS)
-    (clients, streams) = fetch_waveforms_with_metadata(options)
-    #'''
-    # заменим streams
+    #===
+    # данные в любом случае загружаются из файлов
+    files = []
     streams = []
-    files = [os.path.join("/home/Work/python/seis/obspyck/seisobr/2011/11_02/_02_28_03_41", fname)
-        for fname in ('1102280341hrm.2h', '1102280341OGRR.2O', '1102280341TRG.2T')]
-    #
-    for filename in files:
-        print filename, os.path.exists(filename)
-        # получить трассы из файлов Байкал
-        traces = get_traces_from_baikal_file(filename)
-        # создать поток (stream)
-        streams += [Stream(traces=traces)]
-    #'''
+    dicts = []
+    # check wich options to use
+    if options.datetime:
+        print("Now we will search by datetime")
+    elif options.directory:
+        print("Now we will search by directory")
+    elif options.iddir:
+        print("Now we will search by idDir")
+        # поиск в бд по коду idDir
+        # соединяемся с базой данных
+        conn, cursor = setup_db_connection()
+        # выполнять запрос
+        for value in args:
+            print value,
+            items = execute_query(cursor, SELECT_CODES, (value,)) or []
+            for item in items:
+                Dir, fname = item[1:]
+                Dir = Dir[Dir.index(DATA_DIR):].replace("\\", "/")
+                filename = os.path.join(Dir, fname)
+                files += [filename]
+                #
+                print filename, os.path.exists(filename)
+                # получить трассы из файлов Байкал
+                traces = get_traces_from_baikal_file(filename)
+                if traces is None:
+                    raise BaseException("Could not load data from %s!" % filename)
+                    #continue
+                # создать поток (stream)
+                st = Stream(traces=traces)
+                # словари с временами вступлений по событию
+                dic = {}
+                trZ = st.select(component="Z")[0]
+                dic['MagUse'] = True
+                sta = trZ.stats.station.strip()
+                dic['Station'] = sta
+                # получить времена вступления волн по коду idPrn
+                waves = execute_query(cursor, SELECT_WAVES, (item[0],))
+                # заполнить dic
+                for wave in waves:
+                    NameWave = wave[0][0].upper()
+                    #if NameWave not in SEISMIC_PHASES:
+                    #    SEISMIC_PHASES += [NameWave]
+                    # сохранить время вступления как строку
+                    dic[NameWave] = wave[1]
+                # save them all
+                dicts += [dic]
+                streams += [st]
+                #
+    else:
+        print("Dont know what to do!")
+    #===
+    # получили потоки с трассами,
+    # установить глобальный T0 - наименьшее время начала файла среди потоков
+    # и Т1 - аналогичный max
+    T0, T1 = None, None
+    for st in streams:
+        d1 = st.traces[0].stats.starttime# время начала данного потока
+        if T0 is None: T0 = d1
+        else:
+            if d1 < T0: T0 = d1# если это раньше нашего начала - заменить
+        # max
+        d2 = st.traces[0].stats.endtime# время конца данного потока
+        if T1 is None: T1 = d2
+        else:
+            if d2 > T1: T1 = d2
+    # рассчитать время волны в секундах вместо строки для всех словарей
+    for dic in dicts:
+        for k, v in dic.iteritems():
+            if k in SEISMIC_PHASES:
+                # перевести строку в секунды относительно T0
+                # с поправкой на начальное смещение
+                dic[k] = calc_seconds_from_T0(v, T0) - options.starttime_offset
+    # ===
     # Create the GUI application
     qApp = QtGui.QApplication(sys.argv)
-    obspyck = ObsPyck(clients, streams, options, KEYS)
-    qApp.connect(qApp, QtCore.SIGNAL("aboutToQuit()"), obspyck.cleanup)
+    obspyck = ObsPyck(T0, T1, dicts, streams, options, KEYS)
+    #qApp.connect(qApp, QtCore.SIGNAL("aboutToQuit()"), obspyck.cleanup)
     os._exit(qApp.exec_())
 
 
@@ -1477,5 +1416,5 @@ if __name__ == "__main__":
     main()
 
 """
-./obspyck.py -d 8100 -t 2012-01-01T05:00:00 -f 3ch.mseed --nometadata
+./cleanobspyck.py -d /home/Work/python/seis/obspyck/seisobr/2011/11_02/_02_28_03_41
 """

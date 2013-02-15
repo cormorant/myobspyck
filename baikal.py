@@ -69,6 +69,7 @@ ChannelHeaderMap = (
 #ShortMainHeaderMap = [i for i in MainHeaderMap if i[0] in
 #    ['kan', 'day', 'month', 'year', "razr", 'station', 'dt', 'to']]
 
+#TODO: use AttribDict from obspy
 class MyDictClass(dict):
     def __init__(self, *args, **kwargs):
         dict.__init__(self, *args, **kwargs)
@@ -86,16 +87,11 @@ class BaikalFile(object):
         self.filename = filename
         self.valid = self.is_baikal()
         # чтение файла
-        #try:
         if self.valid:
             main_header, channels, data = self.read()
             self.main_header = main_header
             self.channels = channels
             self.data = data
-        #except:
-        #    self.valid = False
-        #finally:
-        #    self.valid = True
 
     def read(self):
         """ извлекаем информацию из файла """
@@ -135,7 +131,6 @@ class BaikalFile(object):
             data = a.reshape((len(a)/nkan, nkan)).T
             #
         return main_header, channels, data
-
     
     def is_baikal(self):
         """ является ли файлом формата Байкал """
@@ -145,12 +140,11 @@ class BaikalFile(object):
         try:
             with open(self.filename, 'rb') as _f:
                 nkan = struct.unpack("h", _f.read(2))[0]
-        except (struct.error, IOError):
-            print("invalid file:", self.filename)
+        except (struct.error, IOError), msg:
+            print("Error in file %s with msg: %s" % (self.filename, msg))
             return
         # должно быть вразумительное число каналов
-        if not nkan in range(1,7):
-            return
+        if not nkan in range(1,7): return
         # если сюда дошло - все проверки выполнены
         return True
 

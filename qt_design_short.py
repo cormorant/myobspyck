@@ -348,4 +348,4 @@ class Ui_qMainWindow_obsPyck(object):
         self.action_5.setText(QtGui.QApplication.translate("qMainWindow_obsPyck", "Помощь", None, QtGui.QApplication.UnicodeUTF8))
         self.action_6.setText(QtGui.QApplication.translate("qMainWindow_obsPyck", "О программе", None, QtGui.QApplication.UnicodeUTF8))
 
-from util import QMplCanvas
+from addon import QMplCanvas
