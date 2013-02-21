@@ -303,6 +303,19 @@ p, l  i { white-space: pre-wrap; }
               </spacer>
              </item>
              <item>
+              <widget class="QDialogButtonBox" name="buttonBox">
+               <property name="orientation">
+                <enum>Qt::Vertical</enum>
+               </property>
+               <property name="standardButtons">
+                <set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set>
+               </property>
+               <property name="centerButtons">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item>
               <layout class="QVBoxLayout" name="verticalLayout_2">
                <property name="sizeConstraint">
                 <enum>QLayout::SetDefaultConstraint</enum>
@@ -509,33 +522,6 @@ p, l  i { white-space: pre-wrap; }
      </layout>
     </item>
    </layout>
-  </widget>
-  <widget class="QMenuBar" name="menubar">
-   <property name="geometry">
-    <rect>
-     <x>0</x>
-     <y>0</y>
-     <width>1325</width>
-     <height>23</height>
-    </rect>
-   </property>
-   <widget class="QMenu" name="menu">
-    <property name="title">
-     <string>Файл</string>
-    </property>
-    <addaction name="open_action"/>
-    <addaction name="separator"/>
-    <addaction name="exit_action"/>
-   </widget>
-   <widget class="QMenu" name="menuAbout">
-    <property name="title">
-     <string>About</string>
-    </property>
-    <addaction name="action_5"/>
-    <addaction name="action_6"/>
-   </widget>
-   <addaction name="menu"/>
-   <addaction name="menuAbout"/>
   </widget>
   <widget class="QStatusBar" name="statusbar">
    <property name="enabled">

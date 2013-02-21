@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'qt_design_short.ui'
 #
-# Created: Thu Jan 24 10:48:04 2013
+# Created: Wed Feb 20 15:55:40 2013
 #      by: PyQt4 UI code generator 4.9.3
 #
 # WARNING! All changes made in this file will be lost!
@@ -186,6 +186,12 @@ class Ui_qMainWindow_obsPyck(object):
         self.horizontalLayout_2.addLayout(self.verticalLayout_7)
         spacerItem = QtGui.QSpacerItem(40, 20, QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Minimum)
         self.horizontalLayout_2.addItem(spacerItem)
+        self.buttonBox = QtGui.QDialogButtonBox(self.qWidget_mpl)
+        self.buttonBox.setOrientation(QtCore.Qt.Vertical)
+        self.buttonBox.setStandardButtons(QtGui.QDialogButtonBox.Cancel|QtGui.QDialogButtonBox.Ok)
+        self.buttonBox.setCenterButtons(True)
+        self.buttonBox.setObjectName(_fromUtf8("buttonBox"))
+        self.horizontalLayout_2.addWidget(self.buttonBox)
         self.verticalLayout_2 = QtGui.QVBoxLayout()
         self.verticalLayout_2.setSizeConstraint(QtGui.QLayout.SetDefaultConstraint)
         self.verticalLayout_2.setObjectName(_fromUtf8("verticalLayout_2"))
@@ -287,14 +293,6 @@ class Ui_qMainWindow_obsPyck(object):
         self.verticalLayout.addWidget(self.qSplitter_vertical)
         self.verticalLayout_4.addLayout(self.verticalLayout)
         qMainWindow_obsPyck.setCentralWidget(self.centralwidget)
-        self.menubar = QtGui.QMenuBar(qMainWindow_obsPyck)
-        self.menubar.setGeometry(QtCore.QRect(0, 0, 1325, 23))
-        self.menubar.setObjectName(_fromUtf8("menubar"))
-        self.menu = QtGui.QMenu(self.menubar)
-        self.menu.setObjectName(_fromUtf8("menu"))
-        self.menuAbout = QtGui.QMenu(self.menubar)
-        self.menuAbout.setObjectName(_fromUtf8("menuAbout"))
-        qMainWindow_obsPyck.setMenuBar(self.menubar)
         self.statusbar = QtGui.QStatusBar(qMainWindow_obsPyck)
         self.statusbar.setEnabled(False)
         sizePolicy = QtGui.QSizePolicy(QtGui.QSizePolicy.Ignored, QtGui.QSizePolicy.Ignored)
@@ -315,13 +313,6 @@ class Ui_qMainWindow_obsPyck(object):
         self.action_6 = QtGui.QAction(qMainWindow_obsPyck)
         self.action_6.setMenuRole(QtGui.QAction.AboutRole)
         self.action_6.setObjectName(_fromUtf8("action_6"))
-        self.menu.addAction(self.open_action)
-        self.menu.addSeparator()
-        self.menu.addAction(self.exit_action)
-        self.menuAbout.addAction(self.action_5)
-        self.menuAbout.addAction(self.action_6)
-        self.menubar.addAction(self.menu.menuAction())
-        self.menubar.addAction(self.menuAbout.menuAction())
 
         self.retranslateUi(qMainWindow_obsPyck)
         QtCore.QMetaObject.connectSlotsByName(qMainWindow_obsPyck)
@@ -341,11 +332,9 @@ class Ui_qMainWindow_obsPyck(object):
         self.qLabel_x_rel.setText(QtGui.QApplication.translate("qMainWindow_obsPyck", "x (rel):", None, QtGui.QApplication.UnicodeUTF8))
         self.qLabel_y.setText(QtGui.QApplication.translate("qMainWindow_obsPyck", "y:", None, QtGui.QApplication.UnicodeUTF8))
         self.qLabel_x_abs.setText(QtGui.QApplication.translate("qMainWindow_obsPyck", "x:", None, QtGui.QApplication.UnicodeUTF8))
-        self.menu.setTitle(QtGui.QApplication.translate("qMainWindow_obsPyck", "Файл", None, QtGui.QApplication.UnicodeUTF8))
-        self.menuAbout.setTitle(QtGui.QApplication.translate("qMainWindow_obsPyck", "About", None, QtGui.QApplication.UnicodeUTF8))
         self.open_action.setText(QtGui.QApplication.translate("qMainWindow_obsPyck", "Открыть", None, QtGui.QApplication.UnicodeUTF8))
         self.exit_action.setText(QtGui.QApplication.translate("qMainWindow_obsPyck", "Выход", None, QtGui.QApplication.UnicodeUTF8))
         self.action_5.setText(QtGui.QApplication.translate("qMainWindow_obsPyck", "Помощь", None, QtGui.QApplication.UnicodeUTF8))
         self.action_6.setText(QtGui.QApplication.translate("qMainWindow_obsPyck", "О программе", None, QtGui.QApplication.UnicodeUTF8))
 
-from addon import QMplCanvas
+from util import QMplCanvas

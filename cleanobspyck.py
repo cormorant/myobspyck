@@ -9,6 +9,7 @@ APP_NAME = 'cleanpyck'
 import os
 import sys
 import argparse
+import copy
 
 from PyQt4 import QtGui, QtCore
 from PyQt4.QtCore import QEvent, Qt
@@ -18,16 +19,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm
 import matplotlib.transforms
-from matplotlib.patches import Ellipse
+#from matplotlib.patches import Ellipse
 from matplotlib.ticker import FuncFormatter, FormatStrFormatter, MaxNLocator
 from matplotlib.backends.backend_qt4agg import NavigationToolbar2QTAgg as QNavigationToolbar
 from matplotlib.backend_bases import MouseEvent as MplMouseEvent, KeyEvent as MplKeyEvent
 
-from obspy.core import UTCDateTime, Stream, Trace
+import warnings
+with warnings.catch_warnings(record=True) as w:
+    from obspy.core import UTCDateTime, Stream, Trace
 
 from qt_design_short import Ui_qMainWindow_obsPyck
 
-from addon import *
+from util import *
 
 
 class ObsPyck(QtGui.QMainWindow):
@@ -106,21 +109,6 @@ class ObsPyck(QtGui.QMainWindow):
         # получить (если возможно) исходные времена вступлений для этих файлов
         #(streams, dicts) = setup_dicts(streams, options)
         #
-        '''dicts = [{'MagUse': True,
-          'P': 73.77000000000007,
-          'S': 87.90000000000008,
-          'Saxind': 0,
-          'Station': 'HRM'},
-         {'MagUse': True,
-          'P': 39.12000000000003,
-          'S': 48.23000000000004,
-          'Saxind': 1,
-          'Station': 'OGRR'},
-         {'MagUse': True,
-          'P': 60.16000000000005,
-          'S': 72.62000000000006,
-          'Saxind': 0,
-          'Station': 'TRG'}]'''
         self.eventMapColors = []
         for i in xrange(len(dicts)):
             self.eventMapColors.append((0.,  1.,  0.,  1.))
@@ -167,12 +155,16 @@ class ObsPyck(QtGui.QMainWindow):
         self.resize(size)
         #
         # connect own button and menu clicks
-        self.connect(self.widgets.exit_action, QtCore.SIGNAL("triggered()"), self.close)
-        self.connect(self.widgets.open_action, QtCore.SIGNAL("triggered()"), self.open_file)
+        #self.connect(self.widgets.exit_action, QtCore.SIGNAL("triggered()"), self.close)
+        #self.connect(self.widgets.open_action, QtCore.SIGNAL("triggered()"), self.open_file)
+        # click on button box (OK, cancel)
+        self.connect(self.widgets.buttonBox, QtCore.SIGNAL("accepted()"), self.ok_save)
+        self.connect(self.widgets.buttonBox, QtCore.SIGNAL("rejected()"), self.cancel_save)
     
     def load_data(self, dicts, streams, options, keys, redraw=False):
         """ загрузить новые данные """
         self.dicts = dicts
+        self.dicts_original = copy.deepcopy(dicts)
         self.streams = streams
         self.options = options
         self.keys = keys
@@ -209,6 +201,22 @@ class ObsPyck(QtGui.QMainWindow):
         print filename
         stream = read(str(filename))
         self.load_data(self.dicts, [stream], self.options, self.keys, redraw=True)
+
+    def ok_save(self):
+        """ Сохранение внесённых изменений """
+        print("*"*30)
+        print("saving changes here...")
+        #
+
+    def cancel_save(self):
+        """ отмена внесённых изменений во времена вступлений """
+        print("*"*30)
+        print("cancel changes...")
+        self.dicts = copy.deepcopy(self.dicts_original)
+        self.updateAllItems()
+        self.redraw()
+
+    #===
 
     def time_abs2rel(self, abstime):
         """
@@ -273,7 +281,10 @@ class ObsPyck(QtGui.QMainWindow):
     def on_qToolButton_debug_clicked(self, *args):
         if args:
             return
-        self.debug()
+        try:
+            self.debug()
+        except BaseException, e:
+            print(e)
     
     def on_qToolButton_previousStream_clicked(self, *args):
         if args:
@@ -1321,7 +1332,7 @@ def main():
         parser.add_argument(*arg, **kwargs)
     options = parser.parse_args()
     args = options.arguments
-    #print options, args
+    #print options, args, options.database
     #return
     # For keybindings option, just print them and exit.
     if options.keybindings:
@@ -1345,8 +1356,8 @@ def main():
         conn, cursor = setup_db_connection()
         # выполнять запрос
         for value in args:
-            print value,
-            items = execute_query(cursor, SELECT_CODES, (value,)) or []
+            QUERY = SELECT_CODES.replace("1", str(options.database))
+            items = execute_query(cursor, QUERY, (value,)) or []
             for item in items:
                 Dir, fname = item[1:]
                 Dir = Dir[Dir.index(DATA_DIR):].replace("\\", "/")
@@ -1368,7 +1379,8 @@ def main():
                 sta = trZ.stats.station.strip()
                 dic['Station'] = sta
                 # получить времена вступления волн по коду idPrn
-                waves = execute_query(cursor, SELECT_WAVES, (item[0],))
+                QUERY2 = SELECT_WAVES.replace("1", str(options.database))
+                waves = execute_query(cursor, QUERY2, (item[0],))
                 # заполнить dic
                 for wave in waves:
                     NameWave = wave[0][0].upper()
@@ -1414,7 +1426,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-"""
-./cleanobspyck.py -d /home/Work/python/seis/obspyck/seisobr/2011/11_02/_02_28_03_41
-"""
