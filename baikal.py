@@ -19,10 +19,11 @@ def stripnulls(s):
     return s.strip()
 
 
-def get_time(to, unpack=False):
+def get_time(t0, unpack=False):
+    #TODO: переименовать функцию в get_time_from_seconds
     """ Возвращаем вычисленное время из числа секунд. 'to' -- это Т0 (T нулевое) """
     # t0 - должно быть число
-    hours, remainder = divmod(to, 3600)
+    hours, remainder = divmod(t0, 3600)
     minutes, seconds = divmod(remainder, 60)
     if not unpack:# если нужно время
         microseconds, seconds = math.modf(seconds)

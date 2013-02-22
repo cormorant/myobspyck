@@ -10,6 +10,7 @@ import os
 import sys
 import argparse
 import copy
+import datetime
 
 from PyQt4 import QtGui, QtCore
 from PyQt4.QtCore import QEvent, Qt
@@ -1325,77 +1326,57 @@ class ObsPyck(QtGui.QMainWindow):
         self.drawAllItems()
 
 
-def main():
-    """ execute when the program starts """
-    parser = argparse.ArgumentParser()
-    for arg, kwargs in COMMANDLINE_OPTIONS:
-        parser.add_argument(*arg, **kwargs)
-    options = parser.parse_args()
-    args = options.arguments
-    #print options, args, options.database
-    #return
-    # For keybindings option, just print them and exit.
-    if options.keybindings:
-        for key, value in KEYS.iteritems():
-            print "%s: \"%s\"" % (key, value)
-        return
-    #===
+def create_gui(T0, T1, dicts, streams, options, KEYS, have_to_exit=True):
+    # Create the GUI application
+    qApp = QtGui.QApplication(sys.argv)
+    obspyck = ObsPyck(T0, T1, dicts, streams, options, KEYS)
+    #qApp.connect(qApp, QtCore.SIGNAL("aboutToQuit()"), obspyck.cleanup)
+    if have_to_exit:
+        qApp.exec_()
+
+def setup_dicts_streams(cursor, options, value, query):
+    """ подготовим файлы, список словарей, потоки """
     # данные в любом случае загружаются из файлов
-    files = []
+    #files = []
     streams = []
     dicts = []
-    # check wich options to use
-    if options.datetime:
-        print("Now we will search by datetime")
-    elif options.directory:
-        print("Now we will search by directory")
-    elif options.iddir:
-        print("Now we will search by idDir")
-        # поиск в бд по коду idDir
-        # соединяемся с базой данных
-        conn, cursor = setup_db_connection()
-        # выполнять запрос
-        for value in args:
-            QUERY = SELECT_CODES.replace("1", str(options.database))
-            items = execute_query(cursor, QUERY, (value,)) or []
-            for item in items:
-                Dir, fname = item[1:]
-                Dir = Dir[Dir.index(DATA_DIR):].replace("\\", "/")
-                filename = os.path.join(Dir, fname)
-                files += [filename]
-                #
-                print filename, os.path.exists(filename)
-                # получить трассы из файлов Байкал
-                traces = get_traces_from_baikal_file(filename)
-                if traces is None:
-                    raise BaseException("Could not load data from %s!" % filename)
-                    #continue
-                # создать поток (stream)
-                st = Stream(traces=traces)
-                # словари с временами вступлений по событию
-                dic = {}
-                trZ = st.select(component="Z")[0]
-                dic['MagUse'] = True
-                sta = trZ.stats.station.strip()
-                dic['Station'] = sta
-                # получить времена вступления волн по коду idPrn
-                QUERY2 = SELECT_WAVES.replace("1", str(options.database))
-                waves = execute_query(cursor, QUERY2, (item[0],))
-                # заполнить dic
-                for wave in waves:
-                    NameWave = wave[0][0].upper()
-                    #if NameWave not in SEISMIC_PHASES:
-                    #    SEISMIC_PHASES += [NameWave]
-                    # сохранить время вступления как строку
-                    dic[NameWave] = wave[1]
-                # save them all
-                dicts += [dic]
-                streams += [st]
-                #
-    else:
-        print("Dont know what to do!")
-    #===
-    # получили потоки с трассами,
+    # подготовить и выполнять запрос
+    query = query.replace("1", str(options.database))
+    items = execute_query(cursor, query, (value,)) or []
+    for item in items:
+        Dir, fname = item[1:3]
+        Dir = Dir[Dir.index(DATA_DIR):].replace("\\", "/")
+        filename = os.path.join(Dir, fname)
+        #files += [filename]
+        print filename, os.path.exists(filename)
+        # получить трассы из файлов Байкал
+        traces = get_traces_from_baikal_file(filename)
+        if traces is None:
+            print("Could not load data from %s! No data!" % filename)
+            continue
+        # создать поток (stream)
+        st = Stream(traces=traces)
+        # словари с временами вступлений по событию
+        dic = {}
+        trZ = st.select(component="Z")[0]
+        dic['MagUse'] = False#True
+        sta = trZ.stats.station.strip()
+        dic['Station'] = sta
+        # получить времена вступления волн по коду idPrn
+        QUERY2 = SELECT_WAVES.replace("1", str(options.database))
+        waves = execute_query(cursor, QUERY2, (item[0],))
+        # заполнить dic
+        for wave in waves:
+            NameWave = wave[0][0].upper()# название канала - только 1-я буква
+            # сохранить время вступления как строку
+            dic[NameWave] = wave[1]
+        # save them all
+        streams += [st]
+        dicts += [dic]
+    return streams, dicts
+
+
+def setup_times(options, streams, dicts):
     # установить глобальный T0 - наименьшее время начала файла среди потоков
     # и Т1 - аналогичный max
     T0, T1 = None, None
@@ -1416,13 +1397,100 @@ def main():
                 # перевести строку в секунды относительно T0
                 # с поправкой на начальное смещение
                 dic[k] = calc_seconds_from_T0(v, T0) - options.starttime_offset
-    # ===
-    # Create the GUI application
-    qApp = QtGui.QApplication(sys.argv)
-    obspyck = ObsPyck(T0, T1, dicts, streams, options, KEYS)
-    #qApp.connect(qApp, QtCore.SIGNAL("aboutToQuit()"), obspyck.cleanup)
-    os._exit(qApp.exec_())
+    return T0, T1, dicts
 
+def main():
+    """ execute when the program starts """
+    parser = argparse.ArgumentParser()
+    # add version option
+    parser.add_argument('-V', '--version', action='version',
+        version='%(prog)s.' + __version__)
+    # загрузка (поиск) файла
+    parser.add_argument("-f", "--fromfile",
+        dest="fromfile", nargs=1,
+        type=argparse.FileType('r'), default=sys.stdin,
+        help="Load information about data to load from file.")
+    # add all other arguments
+    for arg, kwargs in COMMANDLINE_OPTIONS:
+        parser.add_argument(*arg, **kwargs)
+    options = parser.parse_args()
+    args = options.arguments
+    #print options, args, options.database
+    #return
+    # For keybindings option, just print them and exit.
+    if options.keybindings:
+        for key, value in KEYS.iteritems():
+            print '%s: "%s"' % (key, value)
+        return
+    #===
+    # соединяемся с базой данных
+    result = setup_db_connection()
+    if result is None:
+        print("Failed to connect db! Exiting.")
+        return
+    else:
+        conn, cursor = result
+    #=== parse options
+    # check wich options to use
+    if options.datetime:
+        print("Now we will search by datetime"),
+        # найти в базе данных ближайшее событие к указанному в опции
+        # (вид YYYY-mm-ddTHH:MM:SS)
+        #===
+        # возъмём только первый аргумент
+        dt = args[0]
+        print dt
+        # проверим что передана правильная дата
+        try:
+            dt = datetime.datetime.strptime(dt, "%Y-%m-%dT%H:%M:%S")
+        except ValueError, e:
+            print('Error! Specify datetime to search in format "YYYY-mm-ddTHH:MM:SS"', e)
+        # получим отдельно дату и время
+        date = dt.date().strftime('%Y-%m-%d')
+        #time = dt.time().strftime('%H:%M:%S.%f')
+        # получим число секунд из времени
+        #seconds = calc_seconds_from_T0(time, dt)
+        # выполним запрос по дате
+        streams, dicts = setup_dicts_streams(cursor, options, date, SEARCH_BY_DATETIME)
+        if not streams:
+            print "Nothing found"
+            return
+        print streams, dicts
+        # setup dicts (adjust times in seconds)
+        T0, T1, dicts = setup_times(options, streams, dicts)
+        print T0, T1, dicts
+        # now show gui
+        create_gui(T0, T1, dicts, streams, options, KEYS)
+        #return
+    elif options.directory:
+        print("Now we will search by directory")
+    elif options.iddir:
+        print("Now we will search by idDir")
+        # поиск в бд по коду idDir
+        #for value in args:
+        # у нас всегда один аргумент в этой опции!?
+        streams, dicts = setup_dicts_streams(cursor, options, args[0], SELECT_CODES)
+        # setup dicts (adjust times in seconds)
+        T0, T1, dicts = setup_times(options, streams, dicts)
+        # now show gui
+        create_gui(T0, T1, dicts, streams, options, KEYS)
+    elif options.fromfile:
+        # загружаем список кодов idDir из текстового файла
+        # получить список кодов idDir
+        # в каждой строке взять первое число
+        codes = [s.strip() for s in options.fromfile[0].readlines()]# if s[0].isdigit()
+        print codes
+        for i, code in enumerate(codes):
+            # каждый раз ищем данные и открываем программу для каждого кода idDir
+            streams, dicts = setup_dicts_streams(cursor, options, code)
+            # setup dicts (adjust times in seconds)
+            T0, T1, dicts = setup_times(options, streams, dicts)
+            # now show gui
+            have_to_exit = True if (i == len(codes) - 1) else False
+            create_gui(T0, T1, dicts, streams, options, KEYS, have_to_exit)
+    else:
+        print("Dont know what to do!")
+    #===
 
 if __name__ == "__main__":
     main()

@@ -1,98 +1,138 @@
 # -*- coding: utf-8 -*-
 import os
 import sys
-import copy
+import datetime
+
+import PyQt4
+import numpy as np
+import matplotlib as mpl
+from matplotlib.colors import ColorConverter
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as QFigureCanvas
+from matplotlib.widgets import MultiCursor as MplMultiCursor
+
+mpl.rc('figure.subplot', left=0.05, right=0.98, bottom=0.10, top=0.92,
+       hspace=0.28)
+mpl.rcParams['font.size'] = 10
 
 
+try:
+    import psycopg2
+except ImportError:
+    print("No psycopg2 package. Database postgresql unavailable.")
 
 from obspy.core import UTCDateTime, Trace, Stream
-from obspy.core import read
+#from obspy.core import read
 
+from baikal import BaikalFile, get_time
 
 
 COMMANDLINE_OPTIONS = (
+    #(('-V', '--version'), {
+    #    'action': 'version', 
+    #    'version'='%(prog)s.' + __version__,
+    #}),
+    # основная масса переданных аргументов
+    (("arguments",), {
+        "nargs": "*",
+        'help': "Specify arguments to process",
+    }),
+    # загрузка папки (?)
     (("-d", "--dir"), {
+        "action": "store_true", 'default': False,
         'dest': "directory",
         'help': "Directory in seisobr where to find seismogramms"
     }),
-    (("-f", "--files"), {
-        'type': "string", 'dest': "files",
-        'help': "Local files containing waveform data. List of "
-        "absolute paths separated by commas (,)"
+    # поиск по коду idDir
+    (("-I", "--iddir"), {
+        "action": "store_true", 'default': False,
+        'help': "Search files by query in database by idDir"
     }),
-    #(("-i", "--iddir"), {"type": "int", "dest": "iddir",
-    #    'help': "Search files by query in database by idDir"}),
-    #
+    # поиск по времени
     (("-t", "--datetime"), {
-        "type": "string",
-        "dest": "dt",
+        "action": "store_true", 'default': False,
+        "dest": "datetime",
         "help": "Datetime to search (format like 2013-02-14T01:52:17)."
     }),
+    # вспомогательные опции
     (("-k", "--keys"), {
         'action': "store_true", 'dest': "keybindings",
         'default': False, 'help': "Show keybindings and quit"
     }),
     #
-    (("--nometadata",), {
-        'action': "store_true",
-        'dest': "nometadata", 'default': True,
-        'help': "Deactivate fetching/parsing metadata for waveforms"
+    (("-o", "--offset"), {
+        'type': float, 'default': 0.0,
+        'dest': "starttime_offset",
+        'help': "Offset to add to specified starttime in seconds."
     }),
     #
-    (("-o", "--starttime-offset"), {
-        'type': "float", 'dest': "starttime_offset",
-        'default': 0.0,
-        'help': "Offset to add to specified starttime in seconds."
+    # which database to load from? 1 or 2. default is 1
+    (('-D', "--database"), {
+        'type': int, "default": 1,
+        'choices': (1, 2),
     }),
 )
 
+
 SEISMIC_PHASES = ('P', 'S')
 
-PHASE_COLORS = {'P': "red", 'S': "blue", 'Psynth': "black", 'Ssynth': "black",
-        'Mag': "green", 'PErr1': "red", 'PErr2': "red", 'SErr1': "blue",
-        'SErr2': "blue"}
+PHASE_COLORS = {
+    'P': "red", 'S': "blue",
+    'Psynth': "black", 'Ssynth': "black",
+    'Mag': "green",
+    'PErr1': "red", 'PErr2': "red",
+    'SErr1': "blue", 'SErr2': "blue",
+    "E": 'black',
+}
 
-PHASE_LINESTYLES = {'P': "-", 'S': "-", 'Psynth': "--", 'Ssynth': "--",
-        'PErr1': "-", 'PErr2': "-", 'SErr1': "-", 'SErr2': "-"}
-PHASE_LINEHEIGHT_PERC = {'P': 1, 'S': 1, 'Psynth': 1, 'Ssynth': 1,
-        'PErr1': 0.75, 'PErr2': 0.75, 'SErr1': 0.75, 'SErr2': 0.75}
-KEY_FULLNAMES = {'P': "P pick", 'Psynth': "synthetic P pick",
-        'PWeight': "P pick weight", 'PPol': "P pick polarity",
-        'POnset': "P pick onset", 'PErr1': "left P error pick",
-        'PErr2': "right P error pick", 'S': "S pick",
-        'Ssynth': "synthetic S pick", 'SWeight': "S pick weight",
-        'SPol': "S pick polarity", 'SOnset': "S pick onset",
-        'SErr1': "left S error pick", 'SErr2': "right S error pick",
-        'MagMin1': "Magnitude minimum estimation pick",
-        'MagMax1': "Magnitude maximum estimation pick",
-        'MagMin2': "Magnitude minimum estimation pick",
-        'MagMax2': "Magnitude maximum estimation pick"}
+PHASE_LINESTYLES = {
+    'P': "-", 'S': "-", "E": "-",
+    'Psynth': "--", 'Ssynth': "--",
+    'PErr1': "-", 'PErr2': "-",
+    'SErr1': "-", 'SErr2': "-",
+}
+PHASE_LINEHEIGHT_PERC = {
+    'P': 1, 'S': 1, 'Psynth': 1, 'Ssynth': 1,
+    "E": 1,
+    'PErr1': 0.75, 'PErr2': 0.75, 'SErr1': 0.75, 'SErr2': 0.75
+}
+KEY_FULLNAMES = {
+    'P': "P pick", 'Psynth': "synthetic P pick",
+    "E": "E pick",
+    'PWeight': "P pick weight", 'PPol': "P pick polarity",
+    'POnset': "P pick onset", 'PErr1': "left P error pick",
+    'PErr2': "right P error pick", 'S': "S pick",
+    'Ssynth': "synthetic S pick", 'SWeight': "S pick weight",
+    'SPol': "S pick polarity", 'SOnset': "S pick onset",
+    'SErr1': "left S error pick", 'SErr2': "right S error pick",
+    'MagMin1': "Magnitude minimum estimation pick",
+    'MagMax1': "Magnitude maximum estimation pick",
+    'MagMin2': "Magnitude minimum estimation pick",
+    'MagMax2': "Magnitude maximum estimation pick"
+}
+
 WIDGET_NAMES = (
     "qToolButton_clearAll",
     "qToolButton_overview",
     "qComboBox_phaseType",
     "qPlainTextEdit_stdout", "qPlainTextEdit_stderr"
 )
-#Estimating the maximum/minimum in a sample-window around click
-#MAG_PICKWINDOW = 10
-#MAG_MARKER = {'marker': "x", 'edgewidth': 1.8, 'size': 20}
+
+
 AXVLINEWIDTH = 1.2
 # dictionary for key-bindings.
-KEYS = {'setPick': "a", 'setPickError': "s", 'delPick': "q",
-        'setMagMin': "a", 'setMagMax': "s", 'delMagMinMax': "q",
-        'switchPhase': "control",
-        'prevStream': "y", 'nextStream': "x", 'switchWheelZoomAxis': "shift",
-        'setWeight': {'0': 0, '1': 1, '2': 2, '3': 3},
-        'setPol': {'u': "up", 'd': "down", '+': "poorup", '-': "poordown"},
-        'setOnset': {'i': "impulsive", 'e': "emergent"}}
-# XXX Qt:
-#KEYS = {'setPick': "Key_A", 'setPickError': "Key_S", 'delPick': "Key_Q",
-#        'setMagMin': "Key_A", 'setMagMax': "Key_S", 'delMagMinMax': "Key_Q",
-#        'switchPhase': "Key_Control",
-#        'prevStream': "Key_Y", 'nextStream': "Key_X", 'switchWheelZoomAxis': "Key_Shift",
-#        'setWeight': {'Key_0': 0, 'Key_1': 1, 'Key_2': 2, 'Key_3': 3},
-#        'setPol': {'Key_U': "up", 'Key_D': "down", 'Key_Plus': "poorup", 'Key_Minus': "poordown"},
-#        'setOnset': {'Key_I': "impulsive", 'Key_E': "emergent"}}
+KEYS = {
+    'setPick': "a",
+    'setPickError': "s",
+    'delPick': "q",
+    'setMagMin': "a", 'setMagMax': "s", 'delMagMinMax': "q",
+    'switchPhase': "control",
+    'prevStream': "y", 'nextStream': "x", 'switchWheelZoomAxis': "shift",
+    'setWeight': {'0': 0, '1': 1, '2': 2, '3': 3},
+    'setPol': {'u': "up", 'd': "down", '+': "poorup", '-': "poordown"},
+    'setOnset': {'i': "impulsive", 'e': "emergent"},
+}
+
 
 S_POL_MAP_ZRT = {'R': {'up': "forward", 'down': "backward",
                        'poorup': "forward", 'poordown': "backward"},
@@ -105,6 +145,7 @@ POLARITY_2_FOCMEC = {'up': "U", 'poorup': "+", 'down': "D", 'poordown': "-",
 # the following dicts' keys should be all lower case, we use "".lower() later
 POLARITY_CHARS = POLARITY_2_FOCMEC
 ONSET_CHARS = {'impulsive': "I", 'emergent': "E", 'implusive': "I"}
+
 
 class QMplCanvas(QFigureCanvas):
     """
@@ -124,106 +165,6 @@ def matplotlib_color_to_rgb(color):
     rgb = ColorConverter().to_rgb(color)
     return [int(_i*255) for _i in rgb]
 
-def check_keybinding_conflicts(keys):
-    """
-    check for conflicting keybindings. 
-    we have to check twice, because keys for setting picks and magnitudes
-    are allowed to interfere...
-    """
-    for ignored_key_list in [['setMagMin', 'setMagMax', 'delMagMinMax'],
-                             ['setPick', 'setPickError', 'delPick']]:
-        tmp_keys = copy.deepcopy(keys)
-        tmp_keys2 = {}
-        for ignored_key in ignored_key_list:
-            tmp_keys.pop(ignored_key)
-        while tmp_keys:
-            key, item = tmp_keys.popitem()
-            if isinstance(item, dict):
-                while item:
-                    k, v = item.popitem()
-                    tmp_keys2["_".join([key, str(v)])] = k
-            else:
-                tmp_keys2[key] = item
-        if len(set(tmp_keys2.keys())) != len(set(tmp_keys2.values())):
-            err = "Interfering keybindings. Please check variable KEYS"
-            raise Exception(err)
-
-def fetch_waveforms_with_metadata(options):
-    getPAZ = not options.nometadata
-    getCoordinates = not options.nometadata
-    t1 = UTCDateTime(options.time) + options.starttime_offset
-    t2 = t1 + options.duration
-    streams = []
-    clients = {}
-    sta_fetched = set()
-    # Local files:
-    if options.files:
-        print "=" * 80
-        print "Reading local files:"
-        print "-" * 80
-        parsers = []
-        for file in options.files.split(","):
-            print file
-            st = read(file, starttime=t1, endtime=t2, verify_chksum=options.verify_chksum)
-            streams.append(st)
-    #
-    print "=" * 80
-    return (clients, streams)
-
-def setup_dicts(streams, options):
-    """
-    Function to set up the list of dictionaries that is used alongside the
-    streams list.
-    Also removes streams that do not provide the necessary metadata.
-    :returns: (list(:class:`obspy.core.stream.Stream`s),
-               list(dict))
-    """
-    #set up a list of dictionaries to store all picking data
-    # set all station magnitude use-flags False
-    dicts = []
-    for i in xrange(len(streams)):
-        dicts.append({})
-    # we need to go through streams/dicts backwards in order not to get
-    # problems because of the pop() statement
-    for i in range(len(streams))[::-1]:
-        dict = dicts[i]
-        st = streams[i]
-        trZ = st.select(component="Z")[0]
-        if len(st) == 3:
-            trN = st.select(component="N")[0]
-            trE = st.select(component="E")[0]
-        dict['MagUse'] = False#True
-        sta = trZ.stats.station.strip()
-        dict['Station'] = sta
-        #XXX not used: dictsMap[sta] = dict
-        # XXX should not be necessary
-        '''
-        if net == '':
-            net = 'BR'
-            print "Warning: Got no network information, setting to " + \
-                  "default: BR"
-        '''
-        if not options.nometadata:
-            try:
-                dict['StaLon'] = trZ.stats.coordinates.longitude
-                dict['StaLat'] = trZ.stats.coordinates.latitude
-                dict['StaEle'] = trZ.stats.coordinates.elevation / 1000. # all depths in km!
-                dict['pazZ'] = trZ.stats.paz
-                if len(st) == 3:
-                    dict['pazN'] = trN.stats.paz
-                    dict['pazE'] = trE.stats.paz
-            except:
-                net = trZ.stats.network.strip()
-                print 'Error: Missing metadata for %s. Discarding stream.' \
-                        % (":".join([net, sta]))
-                streams.pop(i)
-                dicts.pop(i)
-                continue
-    return streams, dicts
-
-
-#Monkey patch (need to remember the ids of the mpl_connect-statements to remove them later)
-#See source: http://matplotlib.sourcearchive.com/documentation/0.98.1/widgets_8py-source.html
 class MultiCursor(MplMultiCursor):
     def __init__(self, canvas, axes, useblit=True, **lineprops):
         self.canvas = canvas
@@ -275,7 +216,29 @@ class SplitWriter():
             else:
                 obj.write(msg)
 
-#====================
+
+def setup_dicts(streams, options):
+    """
+    Function to set up the list of dictionaries that is used on the streams list.
+    Also removes streams that do not provide the necessary metadata.
+    """
+    dicts = []
+    # we need to go through streams/dicts backwards in order not to get
+    # problems because of the pop() statement
+    for st in streams:
+    #for i in range(len(streams))[::-1]:
+        dic = {}
+        trZ = st.select(component="Z")[0]
+        dic['MagUse'] = True
+        sta = trZ.stats.station.strip()
+        dic['Station'] = sta
+        dicts.append(dic)
+    return dicts
+
+#=== my own
+
+DATA_DIR = "seisobr"
+
 
 DB_OPTIONS = {
     'host': '172.16.200.1',
@@ -284,23 +247,18 @@ DB_OPTIONS = {
     'password': 'my_password',
 }
 
-SETTINGS = {
-    "width": 800, #1360,
-    "height": 400,#700
-}
-
-DATA_DIR = "seisobr" # папка где хранятся сейсмограммы
+CONN_STRING = "host='%(host)s' dbname='%(database)s' user='%(user)s' password='%(password)s'" % DB_OPTIONS
 
 
-#'SELECT "idPrn", "seisFile" FROM "seisobr_prns" WHERE "idDir" = %s'
+# запросы
+
 SELECT_CODES = """\
 SELECT "prnbase01_prns"."idPrn", "prnbase01_prnsdir"."Path", "prnbase01_prns"."seisFile"
 FROM "prnbase01_prns"
 INNER JOIN "prnbase01_prnsdir"
 ON "prnbase01_prnsdir"."idDir" = "prnbase01_prns"."idDir"
-WHERE "prnbase01_prns"."idDir" = %s
-ORDER BY 1;\
-"""
+WHERE "prnbase01_prns"."idDir" = %s"""
+#--ORDER BY 1;\
 
 SELECT_WAVES = """\
 SELECT "prnbase01_prnswaves"."NameWave", "prnbase01_prnswaves"."TimeWave",
@@ -316,62 +274,108 @@ AND "prnbase01_prnswaves"."NameWave" NOT LIKE '__m'
 #--where letter "m" is not in NameWave
 
 UPDATE_WAVES = 'UPDATE "prnbase01_prnswaves" SET "TimeWave"=%s WHERE "idWave"=%s;'
+UPDATE_WAVES_ = '''\
+UPDATE "prnbase{code}_prnswaves"
+SET "TimeWave"=%s
+WHERE "idWave"=%s;'''.format(**{"code": "%02d"%1})
 
-CANALS = ("NS", "EW", "Z", "NSg", "EWg", "Zg")
+
+# выбрать из таблицы prns ближайшее значение за указанную дату
+SEARCH_BY_DATETIME = '''\
+SELECT
+    "prnbase01_prns"."idPrn", "prnbase01_prnsdir"."Path", "prnbase01_prns"."seisFile",
+    "prnbase01_prns"."DateE", "prnbase01_prns"."TimeE"
+FROM
+    "prnbase01_prns"
+INNER JOIN
+    "prnbase01_prnsdir"
+ON
+    "prnbase01_prnsdir"."idDir" = "prnbase01_prns"."idDir"
+WHERE
+    "prnbase01_prns"."DateE" = %s
+ORDER BY "prnbase01_prns"."TimeE"
+LIMIT 3
+'''
 
 
-
-def execute_query(QUERY, params):
-    """ выполняем запрос и возвращаем его результат """
+def execute_query(cursor, query, params):
+    """ ищем записи """
     try:
-        cursor.execute(QUERY, tuple(params,))
+        cursor.execute(query, tuple(params,))
     except psycopg2.Error, msg:
         print("An error ocured while executing query:", msg)
+        #return []
     else:
         return cursor.fetchall()
 
 
-def secfromtime(time):
-    """ вернуть число в секундах (и милисек) из времени """
-    #tim.hour * 3600 + tim.minute * 60 + tim.second
-    # если параметр - строка
+def setup_db_connection():
+    conn_string = "host='%(host)s' dbname='%(database)s' user='%(user)s' password='%(password)s'" % DB_OPTIONS
+    try:
+        conn = psycopg2.connect(conn_string)
+    except psycopg2.OperationalError, msg:
+        print("Error connecting to database with problem:", msg)
+        return
+    cursor = conn.cursor()
+    return (conn, cursor)
+
+
+
+#=== BAIKAL data handling
+
+def get_traces_from_baikal_file(filename):
+    # загружать данные из файла формата Байкал
+    bf = BaikalFile(filename)
+    if not bf.valid:
+        print("\nSkipping file %s" % filename)
+        return
+    # time
+    _hour, _minute, _seconds = get_time(bf.main_header.to, unpack=True)
+    # and UTCDateTime
+    utcdatetime = UTCDateTime(
+        bf.main_header.year,
+        bf.main_header.month,
+        bf.main_header.day,
+        int(_hour), int(_minute), _seconds,
+        precision=3,# digits after point
+    )
+    # все каналы (трассы) из файла
+    traces = []
+    for i, channel in enumerate(bf.channels):
+        # repair name of channel
+        ch_name = channel.name_chan[0].upper()
+        # создадим заголовок
+        header = {
+            'network': 'BR',
+            'station': bf.main_header.station.upper(),
+            'location': '',
+            'channel': ch_name,
+            'npts': len(bf.data[i]),
+            'sampling_rate': 1. / bf.main_header.dt,
+            'starttime': utcdatetime,
+        }
+        traces += [Trace(header=header, data=bf.data[i])]
+    return traces
+
+
+def calc_seconds_from_T0(str_wave, T0):
+    """ посчитать время волны (в секундах) относительно начала файла (?) """
+    # если Т0 не UTCDateTime а datetime -- то сделать
+    if not isinstance(T0, UTCDateTime):
+        T0 = UTCDateTime(T0)
+    # вступления волн рассчитать относительно глобального начала (Т0), в секундах
+    t_wave = datetime.datetime.strptime(str_wave, "%H:%M:%S.%f")
+    #date = T0.date() if callable(T0.date) else T0.date
+    dt = datetime.datetime.combine(T0.date, t_wave.time())
+    assert dt >= T0.datetime, "time ow wave smaller then start of file! %s<%s" % (dt,T0)
+    delta = dt - T0.datetime
+    return delta.total_seconds()
+
+
+def get_seconds_from_time(time):
+    """ получить число секунд из строки """
     if isinstance(time, str):
         t = time.split(':')
         return int(t[0]) * 3600 + int(t[1]) * 60 + float(t[2])
     else:
-        raise NotImplementedError
-
-
-def read_baikal(filename):
-    """ читаем заголовок и область данных в файле формата Байкал """
-    #try:
-    if not os.path.exists(filename):
-        print("File not found: %s" % filename)
-        return
-    # work on file
-    with open(filename, "rb") as _f:
-        nkan = struct.unpack("h", _f.read(2))[0]
-        # проверка на количество каналов
-        if not (nkan in range(1,7)): return
-        # разрядность
-        _f.seek(18)
-        razr = struct.unpack("h", _f.read(2))[0]
-        # дискретизация
-        _f.seek(48)
-        sampl_rate = struct.unpack("d", _f.read(8))[0]
-        # считать значение первой секунды
-        t0 = struct.unpack("d", _f.read(8))[0]
-        # где начинаются данные
-        offset = 120 + nkan * 72
-        _f.seek(offset)
-        # считываются массивы с данными
-        a = np.fromstring(_f.read(), dtype=np.int16 if razr==16 else np.int32)
-        # обрезать массив с конца пока он не делится на 3
-        while len(a) % 3 != 0: a = a[:-1]
-        # демультиплексируем
-        data = a.reshape((len(a)/nkan, nkan)).T
-        #a.fromstring(data)
-        # вернуть + массив с demultuplex данными и количество каналов
-    return sampl_rate, t0, data, nkan
-
-
+        raise NotImplementedError, "must be just a string!"
